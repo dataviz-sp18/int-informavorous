@@ -1,0 +1,14 @@
+base
+data.table
+ggplot2
+plotly
+ggthemes
+magrittr
+tidyverse
+tibble
+tidyr
+readr
+purrr
+dplyr
+stringr
+forcats

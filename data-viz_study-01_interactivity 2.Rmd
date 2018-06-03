@@ -1,0 +1,681 @@
+---
+title: "Interactive Data Visualization with Plotly"
+author: "Misha Ash"
+date: "05/25/2018"
+output: html_document
+---
+
+```{r setup, include = FALSE, echo = TRUE, cache = TRUE, fig.align = 'center'}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(data.table)
+library(ggplot2)
+library(plotly)
+
+library(ggthemes)
+library(magrittr)
+library(tidyverse)
+
+
+
+```
+
+```{r setup_output, include=FALSE}
+hook_output_def = knitr::knit_hooks$get('output')
+knitr::knit_hooks$set(output = function(x, options) {
+  if (!is.null(options$vspaceout)) {
+    end <- paste0("\\vspace{", options$vspaceout, "}")
+    stringr::str_c(hook_output_def(x, options), end)
+  } else {
+    hook_output_def(x, options)
+  }
+})
+```
+
+
+```{r load data, echo = FALSE, include = FALSE}
+
+# ELAN encoding (n=24) with added accuracy, item code, and other item variables
+study_01 <- readr::read_csv("~/R/CGChains/data/CGChains_CODED-ELAN-DATA_2018-04-24.csv")
+
+```
+
+```{r recode elan data, include = FALSE}
+# encode gesture presence and spatiality as dichotomous indicator variables
+
+study_01 <- study_01 %>%
+  
+  # encode as data frame
+  as_data_frame() %>%
+  
+  # add dichotomous variables
+  mutate(GESTURE_PRESENT = if_else(study_01$`gesture_presence` == "yes", 1, 0)) %>%
+  mutate(SPATIAL_TRIAL = if_else(study_01$trial_type == "spatial", 1, 0)) %>%
+  mutate(VERTICAL_TRIAL = if_else(study_01$item_axis == "vertical", 1, 0)) %>%
+  
+  # add difficulty variable based on deSoto (1965)
+  mutate(deSoto_difficulty = cut(x = correct_deSoto_without_invalid, breaks = c(38.3, 41.5, 60.5, 61.8, 100),
+                                 right = FALSE, labels = c("HARDEST", "HARD", "EASY", "EASIEST")))
+```
+
+```{r variable types lists, include = FALSE}
+# variable types list
+study_01_VARs <- study_01 %>% 
+  summarize_all(typeof) %>% 
+  gather()
+
+```
+
+```{r gesture_type_axis subset, include = FALSE}
+# select variables of interest
+gesture_type_axis <- study_01 %>%
+  dplyr::select(SUBJ, LIST, trial_number, ITEM_CODE, SPATIAL_TRIAL, VERTICAL_TRIAL, SPATIAL_FIRST, 
+         GESTURE_PRESENT, gesture_axis, ACCURACY, 
+         difficulty_indicator_without_invalid, correct_deSoto_without_invalid, deSoto_difficulty)
+
+```
+
+```{r gesture_type_axis_coded factor encodings, include = FALSE, eval = FALSE}
+# encoding trial spatiality and axis as factors 
+
+gesture_type_axis_coded <- gesture_type_axis
+gesture_type_axis_coded$SPATIAL_TRIAL <- factor(gesture_type_axis_coded$SPATIAL_TRIAL, 
+                                                levels = c(0, 1), 
+                                                labels = c("nonspatial", "spatial"))
+
+gesture_type_axis_coded$VERTICAL_TRIAL <- factor(gesture_type_axis_coded$VERTICAL_TRIAL, 
+                                                levels = c(0, 1), 
+                                                labels = c("horizontal", "vertical"))
+
+#gesture_type_axis_coded$GESTURE_PRESENT <- factor(gesture_type_axis_coded$GESTURE_PRESENT, 
+ #                                               levels = c(0, 1))
+
+# variable types list
+gesture_type_axis_coded_VARs <- gesture_type_axis_coded %>% 
+  summarize_all(typeof) %>% 
+  gather()
+
+```
+
+```{r mean proportion of gesture production by trial type, include = FALSE}
+prop_gesture_type_axis <- study_01 %>%
+  dplyr::select(GESTURE_PRESENT, trial_type, item_axis) %>%
+  dplyr::group_by(trial_type, item_axis) %>%
+  dplyr::summarize(prop_gesture = sum(GESTURE_PRESENT)/240) 
+```
+
+```{r subj means by trial type and axis, include = FALSE}
+# participant means by type and axis conditions
+prop_subj_gesture_type_axis <- study_01 %>%
+  dplyr::select(SUBJ, GESTURE_PRESENT, trial_type, item_axis) %>%
+  dplyr::group_by(SUBJ, trial_type, item_axis) %>%
+  dplyr::summarize(prop_gesture = sum(GESTURE_PRESENT)/10) 
+```
+
+```{r level 1 data, include = FALSE}
+# no interaction terms
+level_01_data <- study_01 %>%
+
+# INDEX VARs
+  
+  # ITEM: individual stimulus problem numbers
+  mutate(ITEM = as.integer(ITEM_CODE)) %>%
+  # LIST
+  mutate(LIST = LIST) %>%
+  # TRIAL
+  mutate(TRIAL = trial_number) %>%
+  # SUBJECT ID
+  mutate(ID = SUBJ) %>%
+
+# PRIMARY IVs
+
+  # SPATIALITY: spatial trials = 1, non-spatial trials = 0
+  mutate(SPACE_IV = if_else(study_01$trial_type == "spatial", 1, 0)) %>%
+  # AXIS: vertical trials = 1, horizontal trials = 0
+  mutate(AXIS_IV = if_else(study_01$item_axis == "vertical", 1, 0)) %>%
+  # DIFFICULTY: difficult trials = 2, easy trials = 1, invalid trials = 0
+  mutate(DIFF_IV = if_else(study_01$DIFFICULTY_with_invalid == "HARD", 2,
+                      if_else(study_01$DIFFICULTY_with_invalid == "EASY", 1, 0))) %>%
+
+  # ORDER: spatial first = 1, non-spatial first = 0
+  mutate(ORDER = as.integer(if_else(study_01$SPATIAL_FIRST == 1, 1, 0))) %>%
+  
+# SECONDARY IVs ## leaving this out for now
+  # difficulty based on deSoto (1965): HARDEST = 4, HARD = 3, EASY = 2, EASIEST = 1
+  #mutate(deSoto_difficulty_IV2 = cut(x = correct_deSoto_without_invalid, breaks = c(38.3, 41.5, 60.5, 61.8, 100),
+                                 #right = FALSE, labels = c(4, 3, 2, 1))) %>%
+  
+# DVs
+  # GESTURE_PRESENCE: present = 1, absent = 0
+  mutate(GESTURE_DV = if_else(study_01$gesture_presence == "yes", 1, 0)) %>%
+  # GESTURE_AXIS: lateral = 1, vertical = 2, saggital = 3, other/unclear = 4, ERROR = 5
+  mutate(AXIS_DV = if_else(study_01$gesture_axis == "lateral", 1, 
+                   if_else(study_01$gesture_axis == "vertical", 2,
+                   if_else(study_01$gesture_axis == "sagittal", 3, 
+                   if_else(study_01$gesture_axis == "other/unclear", 4, 5))))) %>%
+
+  # ACCURACY: correct = 1, incorrect = 0
+  mutate(ACCURACY_DV = if_else(study_01$ACCURACY == 1, 1, 0)) %>%
+  
+# SELECT VARIABLES
+
+  dplyr::select(ITEM, LIST, TRIAL, ID, 
+         SPACE_IV, AXIS_IV, DIFF_IV, 
+         ORDER, # deSoto_difficulty_IV2, 
+         GESTURE_DV, AXIS_DV, ACCURACY_DV)
+```
+
+```{r X gesture & accuracy by subject, include = FALSE}
+# calculate gesture and accuracy proportions by subject
+X <- level_01_data %>%
+  #dplyr::select(SUBJ, GESTURE_DV, ACCURACY_DV) %>%
+
+  dplyr::group_by(ID, SPACE_IV) %>%
+  dplyr::summarize(gestures = sum(GESTURE_DV), 
+                   percent_gestured = gestures / (length(unique(ITEM))*2),
+                   gesture_se = sd(GESTURE_DV)/sqrt((length(unique(ITEM)))*2),
+                   
+                   errors = length(unique(ITEM)) - sum(ACCURACY_DV),
+                   percent_errors = errors / (length(unique(ITEM))*2),
+                   error_se = sd(1 - ACCURACY_DV)/sqrt((length(unique(ITEM)))*2)
+                   ) %>%
+
+  as_factor(ID)
+```
+
+
+I used this assignment as an opportunity to experiment with some `Plotly` features to visualize data in a clean way while maintaining access to precise values with `hoverlabel` and `tooltip`.
+
+#### bar plot distributions
+
+The following plotly histogram shows the proportion of gestures produced by each participant. Hovering over a bar shows its precise y value.
+
+```{r echo = FALSE, message = FALSE}
+ttl_gest_prop <- prop_subj_gesture_type_axis %>%
+  mutate(prop = prop_gesture/4) %>%
+  dplyr::select(SUBJ, prop) %>%
+  group_by(SUBJ) %>%
+  summarize(prop_gesture = sum(prop)) #%>%
+  #tidyr::spread(key = trial_type, value = prop_gesture)
+
+plotly_gest_histo_01 <- plot_ly(ttl_gest_prop,
+                                x = ~SUBJ, y = ~prop_gesture,
+                                hoverinfo = 'y',
+                                type = 'bar', width = 0.5, 
+                                marker = list(color = "#a2adba"),
+                                opacity = .7) %>%
+  layout(title = "gesture production",
+         yaxis = list(title = 'proportion of trials with gesture'), 
+         barmode = 'stack',
+         xaxis = list(
+         title = "participant number", range = c(13, 38),
+         autotick = FALSE, 
+         ticks = "outside",
+         tick0 = 14, # can't seem to make it start from the second value; changed range instead
+         dtick = 1,
+         ticklen = 3,
+         tickwidth = 1,
+         tickcolor = "black"),
+         margin = list(b = -10, pad = 1))
+           
+
+plotly_gest_histo_01
+```
+
+* design choices
+  - enhanced aesthetic by changing default fill color and opacity of the bars
+  - adjusted tick marks on x axis to clearly show correspondence of values with bars
+  - moved x-axis label down (was too close to axis)
+  - set the range of x-axis so leftmost and rightmost bars do not run into sides
+  
+
+* issues
+  - The aforementioned range manipulation was done because by default the minimum and maximum x values caused the corresponding bars to run into the sides. I could not remove the first and last labels of the x-axis, however, having tried the `tick0` parameter. 
+
+This distribution can be further enhanced in a few ways. One is use the color channel to distinguish gestures along another variable of interest---spatiality in this case:
+
+```{r gesture production histogram, echo = FALSE}
+# munge a tidy frame for stacked histogram
+gest_spatiality <- prop_subj_gesture_type_axis %>%
+  mutate(prop = prop_gesture/4) %>%
+  dplyr::select(SUBJ, trial_type, prop) %>%
+  group_by(trial_type, SUBJ) %>%
+  summarize(prop_gesture = sum(prop)) %>%
+  spread(key = trial_type, value = prop_gesture)
+
+# rename column because plotly appears not to like col names with dash and quoted names interpreted as strings
+names(gest_spatiality)[names(gest_spatiality) == 'non-spatial'] <- 'abstract' 
+
+
+plotly_gest_histo_02 <- plot_ly(gest_spatiality, 
+                                  x = ~SUBJ, y = ~spatial, type = 'bar', name = 'spatial', 
+                                width = 0.5, marker = list(color = "#66c2a5"), opacity = 0.7) %>%
+  add_trace(gest_spatiality, y = ~abstract, name = 'non-spatial',
+            marker = list(color = "#8da0cb"), opacity = 0.5) %>% #"#a2adba")) %>%
+  
+  layout(title = "gesture production",
+         yaxis = list(title = 'proportion of trials with gesture'), 
+         barmode = 'stack',
+         xaxis = list(
+         title = "participant number", range = c(13, 38),
+         autotick = FALSE, 
+         ticks = "outside",
+         tick0 = 14, # can't seem to make it start from the second value; changed range instead
+         dtick = 1,
+         ticklen = 3,
+         tickwidth = 1,
+         tickcolor = "black"),
+         margin = list(b = -10, pad = 1))
+
+plotly_gest_histo_02
+
+```
+
+Although hovering shows the relative proportion of trials with gesture split according to the non/spatial variable, the it is difficult to discern whether there is an overall pattern. One reason might be the number of bars that are split nearly equally, making the difference nearly indiscernable without looking at the exact values. Another reason is that the current arrangement of information is not amenable to a general comparison across all x values.
+
+To attempt to account for the latter limitation, the bars are rearranged in order of ascending value (while keeping the labels constant so correspondence between participant number and x-axis label is maintained). I did this while also trying out `ggplotly` to translate a `ggplot2` object into a `plotly` object:
+
+```{r ggplotly hist 1, echo = FALSE, fig.width=6.5, fig.height=3.5}
+
+dist_gest <- X %>%
+  
+  ggplot() +
+
+  geom_col(aes(x = reorder(ID, percent_gestured), y = percent_gestured, #group = SUBJ, 
+                 fill = as.factor(SPACE_IV), alpha = .85)) +
+  
+   # scale_y_continuous(expand = c(0, 0)) +
+   # scale_x_continuous(breaks = c(seq(1:24)), expand = c(0, 0)) +
+  
+    # change color scheme of fill colors
+    scale_fill_manual("fill_constant", values = c("#8da0cb", "#66c2a5")) +
+  
+  scale_y_continuous(expand = c(0, 0)) +
+
+    theme_light() +
+    theme(panel.grid.major.x = element_blank(), # remove vertical grid lines
+        panel.grid.minor.x = element_blank(), # remove vertical grid lines
+        panel.grid.minor.y = element_blank(), # remove minor horizontal grid lines
+        # remove legends (unnecessary here)
+        legend.position = "none", ### TEMP
+        plot.title = element_text(margin = margin(t = 0, r = 0, b = 10, l = 0)),
+        axis.title.y = element_text(margin = margin(t = 0, r = 15, b = 0, l = 0)), 
+        axis.title.x = element_text(margin = margin(t = 10, r = 0, b = -5, l = 0)), 
+        panel.border = element_blank(), # remove outer panel border
+        axis.ticks.y = element_blank(), # remove ticks from y axis
+        text = element_text(family = "Arial")) +
+  
+    ggtitle('gesture production by participant') +
+    xlab('participant id (arranged by total gesture production)\n') +
+    ylab('proportion of trials with gesture')
+
+ggplotly(dist_gest, tooltip = c("x", "y", "SPACE_IV"), session = "knitr")
+
+```
+
+.
+This provides a better sense of the distribution, including the relative proportions of spatial and non-spatial trials (we can already see that spatial trials appear to account for more of the gestures overall). Lastly, another potentially useful addition is a *horizonal line* indicating the mean of the distribution:
+
+
+```{r ggplotly hist 3, echo = FALSE, fig.width=6.5, fig.height=3.5, warning = FALSE}
+
+'total mean =' <- round(mean(X$percent_gestured)*2, digits = 3)
+
+dist_gest_04 <- X %>%
+  
+  ggplot() +
+    
+      geom_hline(aes(yintercept = mean(percent_gestured)*2, 'total mean' = 0.524), 
+              color = "#2e184b", size = 0.3) +
+  
+    geom_col(aes(x = reorder(ID, percent_gestured), y = percent_gestured, #group = SUBJ, 
+                 fill = as.factor(SPACE_IV), alpha = .85)) +
+  
+    # change color scheme of fill colors
+    scale_fill_manual("fill_constant", values = c("#8da0cb", "#66c2a5")) +
+  
+  scale_y_continuous(expand = c(0, 0)) +
+   # scale_x_continuous(breaks = c(seq(1:24)), expand = c(0, 0)) +
+  
+    theme_light() +
+    theme(panel.grid.major.x = element_blank(), # remove vertical grid lines
+        panel.grid.minor.x = element_blank(), # remove vertical grid lines
+        panel.grid.minor.y = element_blank(), # remove minor horizontal grid lines
+        # remove legend
+        legend.position = "none",
+        plot.title = element_text(margin = margin(t = 0, r = 0, b = 10, l = 0)),
+        axis.title.y = element_text(margin = margin(t = 0, r = 15, b = 0, l = 0)), 
+        axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0)), 
+        panel.border = element_blank(), # remove outer panel border
+        axis.ticks.y = element_blank(), # remove ticks from y axis
+        text = element_text(family = "Arial")) +
+  
+    ggtitle('gesture production by participant') +
+    xlab('participant id (arranged by total gesture production)\n') +
+    ylab('proportion of trials with gesture')
+
+ggplotly(dist_gest_04, tooltip = c("total mean", "spatial mean", "percent_gestured", "SPACE_IV"))
+
+```
+
+```{r ggplotly hist 4, echo = FALSE, fig.width=5, fig.height=3.5}
+
+'total mean =' <- round(mean(X$percent_gestured)*2, digits = 3)
+
+dist_gest <- X %>%
+  
+  ggplot() +
+    
+  # mean gesture production line
+#  geom_hline(aes(yintercept = mean(percent_gestured)*2), color = "#2e184b", size = 0.3) +
+  
+      geom_hline(aes(yintercept = mean(percent_gestured)*2, 'total mean' = 0.524), 
+              color = "#2e184b", size = 0.3) +
+
+## OLD VERSION  
+##    geom_hline(aes(yintercept = mean(percent_gestured)*2, 'total mean' = paste("total mean", mean(percent_gestured)*2)), 
+##                 color = "#2e184b", size = 0.3) +
+  
+  # label mean line
+##  geom_text(x = 3, y = (mean(X$percent_gestured)*2 + 0.03), 
+##            aes(label = "total mean = "), color = "#2e184b") +
+##  
+##  geom_text(x = 6, y = (mean(X$percent_gestured)*2 + 0.03), 
+##            aes(label = round(mean(percent_gestured)*2, digits = 3)), color = "#2e184b") +
+  
+  ### REFERENCE
+    
+   #     geom_text(aes(label = sprintf("%0.2f", round(prop_gesture, digits = 2)), 
+    #                y = prop_gesture + 0.1,
+     #               group = item_axis,
+      #              fontface = "bold"), 
+       #             position = position_dodge(0.55),
+        #            color = "#767676") +
+  
+### group means... cluncky code: there must be a simpler way!
+  
+  # spatial mean line
+  geom_hline(aes(yintercept = 
+      (sum(X[X$SPACE_IV == 1, "percent_gestured"]) / 
+      tally(X[X$SPACE_IV == 1, "percent_gestured"]))[1,1], 'spatial mean' = "X"),
+      color = "#5bae94") +
+  
+  # spatial mean labels  
+  geom_text(x = 3, 
+            y = (sum(X[X$SPACE_IV == 1, "percent_gestured"]) / 
+              tally(X[X$SPACE_IV == 1, "percent_gestured"])[1,1] + 0.03)[1,1], 
+            aes(label = "spatial mean = "), color = "#5bae94") +
+  
+  geom_text(x = 7, 
+            y = (sum(X[X$SPACE_IV == 1, "percent_gestured"]) / 
+              tally(X[X$SPACE_IV == 1, "percent_gestured"])[1,1] + 0.03)[1,1], 
+            
+            aes(label = round((sum(X[X$SPACE_IV == 1, "percent_gestured"]) / 
+      tally(X[X$SPACE_IV == 1, "percent_gestured"]))[1,1], digits = 3)), color = "#5bae94") +
+  
+  # non-spatial mean labels  
+  geom_text(x = 3.5, 
+            y = (sum(X[X$SPACE_IV == 0, "percent_gestured"]) / 
+              tally(X[X$SPACE_IV == 0, "percent_gestured"])[1,1] + 0.03)[1,1], 
+            aes(label = "non-spatial mean = "), color = "#5bae94") +
+  
+  geom_text(x = 7.5, 
+            y = (sum(X[X$SPACE_IV == 0, "percent_gestured"]) / 
+              tally(X[X$SPACE_IV == 0, "percent_gestured"])[1,1] + 0.03)[1,1], 
+            
+            aes(label = round((sum(X[X$SPACE_IV == 0, "percent_gestured"]) / 
+      tally(X[X$SPACE_IV == 0, "percent_gestured"]))[1,1], digits = 3)), color = "#5bae94") +
+  
+  
+#  geom_text(x = 6, y = 0.554, aes(label = round(mean(percent_gestured)*2, digits = 3)), 
+#                                  color = "#2e184b") +
+  
+    # non-spatial mean
+  geom_hline(aes(yintercept = 
+      (sum(X[X$SPACE_IV == 0, "percent_gestured"]) / 
+      tally(X[X$SPACE_IV == 0, "percent_gestured"]))[1,1]), color = "#7e90b6") +
+  
+#  geom_hline(aes(yintercept = mean((X[X$SPACE_IV == 0, "percent_gestured"])[,])), color = "#FFA319") +
+#  geom_hline(aes(yintercept = mean((X[X$SPACE_IV == 1, "percent_gestured"])[,])), color = "#FFA319") +
+  
+
+### temporarily remove ribbon (need to fix error margin)
+ #   annotate('ribbon', x = c(-Inf, Inf), 
+  #           ymin = summary_subj_err_gest$mean_percent_gestured - summary_subj_err_gest$mean_gesture_se, 
+   #          ymax = summary_subj_err_gest$mean_percent_gestured + summary_subj_err_gest$mean_gesture_se, 
+    #         alpha = 0.2, fill = "#628B9F") +
+  
+  geom_col(aes(x = reorder(ID, percent_gestured), y = percent_gestured, #group = SUBJ, 
+                 fill = as.factor(SPACE_IV), alpha = .85)) +
+  
+
+  
+   # scale_y_continuous(expand = c(0, 0)) +
+   # scale_x_continuous(breaks = c(seq(1:24)), expand = c(0, 0)) +
+  
+    # change color scheme of fill colors
+    scale_fill_manual("fill_constant", values = c("#8da0cb", "#66c2a5")) +
+  
+  scale_y_continuous(expand = c(0, 0)) +
+   # scale_x_continuous(breaks = c(seq(1:24)), expand = c(0, 0)) +
+  
+    theme_light() +
+    theme(panel.grid.major.x = element_blank(), # remove vertical grid lines
+        panel.grid.minor.x = element_blank(), # remove vertical grid lines
+        panel.grid.minor.y = element_blank(), # remove minor horizontal grid lines
+        # remove legends (unnecessary here)
+        legend.position = "none", ### TEMP
+        plot.title = element_text(margin = margin(t = 0, r = 0, b = 10, l = 0)),
+        axis.title.y = element_text(margin = margin(t = 0, r = 15, b = 0, l = 0)), 
+        axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0)), 
+        panel.border = element_blank(), # remove outer panel border
+        axis.ticks.y = element_blank(), # remove ticks from y axis
+        text = element_text(family = "Arial")) +
+  
+    ggtitle('gesture production by participant') +
+    xlab('participant id (arranged by total gesture production)\n') +
+    ylab('proportion of trials with gesture')
+
+dist_gest
+
+ggplotly(dist_gest, tooltip = c("total mean", "spatial mean", "all"))
+
+```
+
+#### the split violin
+
+kernel density estimation (KDE)
+```{r excluded split violin, include = FALSE, eval = FALSE}
+
+pointposMale <- c(-0.9,-1.1,-0.6,-0.3)
+pointposFemale <- c(0.45,0.55,1,0.4)
+showLegend <- c(T,F,F,F)
+
+p <- plot_ly(type = 'violin')
+
+i = 0
+for (i in 1:2) {
+  p <- add_trace(
+    p,
+    x = prop_subj_gesture_type_axis$item_axis[prop_subj_gesture_type_axis$trial_type == 'spatial' & 
+                                           prop_subj_gesture_type_axis$item_axis == 
+                                           unique(prop_subj_gesture_type_axis$item_axis)[i]],
+    
+    y = prop_subj_gesture_type_axis$prop_gesture[prop_subj_gesture_type_axis$trial_type == 'spatial' & 
+                                           prop_subj_gesture_type_axis$item_axis == 
+                                           unique(prop_subj_gesture_type_axis$item_axis)[i]],
+    
+
+    hoveron = "all",
+    legendgroup = 'spatial',
+    scalegroup = 'spatial',
+    name = 'spatial',
+    side = 'negative',
+
+## haven't figured out how to differentially control opacity
+#   group = prop_subj_gesture_type_axis$item_axis,
+#    opacity = .5,
+
+    box = list(
+      visible = T
+    ),
+#    points = 'all',
+#    pointpos = pointposMale[i],
+#    jitter = 0,
+#    scalemode = 'count',
+    meanline = list(
+      visible = F
+    ),
+    line = list(
+      color = "#8dd3c7"
+    ),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "#8dd3c7"
+      ),
+      symbol = 'line-ns'
+    ),
+    showlegend = showLegend[i]
+    ) %>% 
+    
+    
+    add_trace(
+    x = prop_subj_gesture_type_axis$item_axis[prop_subj_gesture_type_axis$trial_type == 'non-spatial' & 
+                                           prop_subj_gesture_type_axis$item_axis == 
+                                           unique(prop_subj_gesture_type_axis$item_axis)[i]],
+    
+    y = prop_subj_gesture_type_axis$prop_gesture[prop_subj_gesture_type_axis$trial_type == 'non-spatial' & 
+                                           prop_subj_gesture_type_axis$item_axis == 
+                                           unique(prop_subj_gesture_type_axis$item_axis)[i]],
+      
+      hoveron = "all",
+      legendgroup = 'non-spatial',
+      scalegroup = 'non-spatial',
+      name = 'non-spatial',
+      side = 'positive',
+      box = list(
+        visible = T
+      ),
+#      points = 'all',
+#      pointpos = pointposFemale[i],
+#      jitter = 0,
+      scalemode = 'count',
+      meanline = list(
+        visible = F
+      ),
+      line = list(
+        color = "#bebada"
+      ),
+      marker = list(
+        line = list(
+          width = 2,
+          color = "#bebada"
+        ),
+        symbol = 'line-ns'
+      ),
+      showlegend = showLegend[i]
+  )
+}
+
+p <- layout(
+  p,
+  title = "Proportion of problems on which gestures were produced<br><i>...",
+  yaxis = list(
+    zeroline = F
+  ),
+  violingap = 0,
+  violingroupgap = 0.1,
+  violinmode = 'overlay', # because violins are split they need to be overlaid
+  legend = list(
+    tracegroupgap = 1
+  )
+)
+
+p
+
+# htmlwidgets::saveWidget(as_widget(p), "violin_example.html")
+```
+
+
+```{r violin 1, warning = FALSE, echo = FALSE}
+
+gesture_proportion_violin <- prop_subj_gesture_type_axis %>%
+  
+  plot_ly(type = 'violin') %>%
+  add_trace(
+    x = ~ item_axis[prop_subj_gesture_type_axis$trial_type == 'spatial'],
+    y = ~ prop_gesture[prop_subj_gesture_type_axis$trial_type == 'spatial'],
+    
+    legendgroup = 'spatial',
+    scalegroup = 'spatial',
+    name = 'spatial',
+    side = 'negative', # left side
+    opacity = 0.8,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = '#66c2a5' # selected from qualitative colorblind safe scheme from Color Brewer
+    )
+  ) %>%
+  
+  add_trace(
+    x = ~ item_axis[prop_subj_gesture_type_axis$trial_type == 'non-spatial'],
+    y = ~ prop_gesture[prop_subj_gesture_type_axis$trial_type == 'non-spatial'],
+    
+    legendgroup = 'non-spatial',
+    scalegroup = 'non-spatial',
+    name = 'non-spatial',
+    side = 'positive', # right side
+    opacity = 0.7,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = '#8da0cb' # selected from qualitative colorblind safe scheme from Color Brewer
+    )
+  ) %>% 
+  layout(
+    title = "Gesture Production by Trial Type<br><i>(proportion observations are grouped by subject)",
+    xaxis = list(
+      title = ""  
+    ),
+    yaxis = list(
+      title = "proportion of trials with gesture",
+      zeroline = F
+    ),
+    violingap = 0,
+    violingroupgap = 0.1,
+    violinmode = 'overlay', # because violins are split they need to be overlaid
+    tracegroupgap = 1
+  )
+
+gesture_proportion_violin
+```
+
+
+
+```{r box plot 1}
+p <- plot_ly(y = ~ prop_subj_gesture_type_axis$prop_gesture, 
+             type = "box", boxpoints = "all", jitter = 0.3,
+             pointpos = 0)
+
+p <- plot_ly(prop_subj_gesture_type_axis, x = ~ item_axis,
+             y = ~ prop_gesture, color = ~ trial_type, type = "box",
+             boxpoints = "all", jitter = 0.3, pointpos = 0) %>%
+  layout(boxmode = "group")
+
+p
+
+```
+
+
+

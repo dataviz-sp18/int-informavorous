@@ -1,0 +1,295 @@
+---
+title: "Distributions Underlying Mean Comparison"
+subtitle: "Data Visualization: Interactive Visualization"
+author: "Misha Ash"
+date: "05/25/2018"
+output: html_document
+---
+
+```{r setup, include = FALSE, echo = TRUE, cache = TRUE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(data.table)
+library(ggplot2)
+library(plotly)
+library(ggthemes)
+library(magrittr)
+library(tidyverse)
+
+```
+
+```{r data load, echo = FALSE, include = FALSE}
+
+# ELAN encoding (n=24) with added accuracy, item code, and other item variables
+study_01 <- readr::read_csv("~/R/CGChains/data/CGChains_CODED-ELAN-DATA_2018-04-24.csv")
+
+```
+
+```{r recode elan data, include = FALSE}
+# encode gesture presence and spatiality as dichotomous indicator variables
+
+study_01 <- study_01 %>%
+  
+  # encode as data frame
+  as_data_frame() %>%
+  
+  # add dichotomous variables
+  mutate(GESTURE_PRESENT = if_else(study_01$`gesture_presence` == "yes", 1, 0)) %>%
+  mutate(SPATIAL_TRIAL = if_else(study_01$trial_type == "spatial", 1, 0)) %>%
+  mutate(VERTICAL_TRIAL = if_else(study_01$item_axis == "vertical", 1, 0)) %>%
+  
+  # add difficulty variable based on deSoto (1965)
+  mutate(deSoto_difficulty = cut(x = correct_deSoto_without_invalid, breaks = c(38.3, 41.5, 60.5, 61.8, 100),
+                                 right = FALSE, labels = c("HARDEST", "HARD", "EASY", "EASIEST")))
+```
+
+```{r variable types lists, include = FALSE}
+# variable types list
+study_01_VARs <- study_01 %>% 
+  summarize_all(typeof) %>% 
+  gather()
+
+```
+
+```{r gesture_type_axis subset, include = FALSE}
+# select variables of interest
+gesture_type_axis <- study_01 %>%
+  dplyr::select(SUBJ, LIST, trial_number, ITEM_CODE, SPATIAL_TRIAL, VERTICAL_TRIAL, SPATIAL_FIRST, 
+         GESTURE_PRESENT, gesture_axis, ACCURACY, 
+         difficulty_indicator_without_invalid, correct_deSoto_without_invalid, deSoto_difficulty)
+
+```
+
+```{r gesture_type_axis_coded factor encodings, include = FALSE, eval = FALSE}
+# encoding trial spatiality and axis as factors 
+
+gesture_type_axis_coded <- gesture_type_axis
+gesture_type_axis_coded$SPATIAL_TRIAL <- factor(gesture_type_axis_coded$SPATIAL_TRIAL, 
+                                                levels = c(0, 1), 
+                                                labels = c("nonspatial", "spatial"))
+
+gesture_type_axis_coded$VERTICAL_TRIAL <- factor(gesture_type_axis_coded$VERTICAL_TRIAL, 
+                                                levels = c(0, 1), 
+                                                labels = c("horizontal", "vertical"))
+
+#gesture_type_axis_coded$GESTURE_PRESENT <- factor(gesture_type_axis_coded$GESTURE_PRESENT, 
+ #                                               levels = c(0, 1))
+
+# variable types list
+gesture_type_axis_coded_VARs <- gesture_type_axis_coded %>% 
+  summarize_all(typeof) %>% 
+  gather()
+
+```
+
+```{r mean proportion of gesture production by trial type, include = FALSE}
+prop_gesture_type_axis <- study_01 %>%
+  dplyr::select(GESTURE_PRESENT, trial_type, item_axis) %>%
+  dplyr::group_by(trial_type, item_axis) %>%
+  dplyr::summarize(prop_gesture = sum(GESTURE_PRESENT)/240) 
+```
+
+```{r subj means by trial type and axis, include = FALSE}
+# participant means by type and axis conditions
+prop_subj_gesture_type_axis <- study_01 %>%
+  dplyr::select(SUBJ, GESTURE_PRESENT, trial_type, item_axis) %>%
+  dplyr::group_by(SUBJ, trial_type, item_axis) %>%
+  dplyr::summarize(prop_gesture = sum(GESTURE_PRESENT)/10) 
+```
+
+
+### split violin
+```{r excluded split violin, include = FALSE, eval = FALSE}
+
+pointposMale <- c(-0.9,-1.1,-0.6,-0.3)
+pointposFemale <- c(0.45,0.55,1,0.4)
+showLegend <- c(T,F,F,F)
+
+p <- plot_ly(type = 'violin')
+
+i = 0
+for (i in 1:2) {
+  p <- add_trace(
+    p,
+    x = prop_subj_gesture_type_axis$item_axis[prop_subj_gesture_type_axis$trial_type == 'spatial' & 
+                                           prop_subj_gesture_type_axis$item_axis == 
+                                           unique(prop_subj_gesture_type_axis$item_axis)[i]],
+    
+    y = prop_subj_gesture_type_axis$prop_gesture[prop_subj_gesture_type_axis$trial_type == 'spatial' & 
+                                           prop_subj_gesture_type_axis$item_axis == 
+                                           unique(prop_subj_gesture_type_axis$item_axis)[i]],
+    
+
+    hoveron = "all",
+    legendgroup = 'spatial',
+    scalegroup = 'spatial',
+    name = 'spatial',
+    side = 'negative',
+
+## haven't figured out how to differentially control opacity
+#   group = prop_subj_gesture_type_axis$item_axis,
+#    opacity = .5,
+
+    box = list(
+      visible = T
+    ),
+#    points = 'all',
+#    pointpos = pointposMale[i],
+#    jitter = 0,
+#    scalemode = 'count',
+    meanline = list(
+      visible = F
+    ),
+    line = list(
+      color = "#8dd3c7"
+    ),
+    marker = list(
+      line = list(
+        width = 1,
+        color = "#8dd3c7"
+      ),
+      symbol = 'line-ns'
+    ),
+    showlegend = showLegend[i]
+    ) %>% 
+    
+    
+    add_trace(
+    x = prop_subj_gesture_type_axis$item_axis[prop_subj_gesture_type_axis$trial_type == 'non-spatial' & 
+                                           prop_subj_gesture_type_axis$item_axis == 
+                                           unique(prop_subj_gesture_type_axis$item_axis)[i]],
+    
+    y = prop_subj_gesture_type_axis$prop_gesture[prop_subj_gesture_type_axis$trial_type == 'non-spatial' & 
+                                           prop_subj_gesture_type_axis$item_axis == 
+                                           unique(prop_subj_gesture_type_axis$item_axis)[i]],
+      
+      hoveron = "all",
+      legendgroup = 'non-spatial',
+      scalegroup = 'non-spatial',
+      name = 'non-spatial',
+      side = 'positive',
+      box = list(
+        visible = T
+      ),
+#      points = 'all',
+#      pointpos = pointposFemale[i],
+#      jitter = 0,
+      scalemode = 'count',
+      meanline = list(
+        visible = F
+      ),
+      line = list(
+        color = "#bebada"
+      ),
+      marker = list(
+        line = list(
+          width = 2,
+          color = "#bebada"
+        ),
+        symbol = 'line-ns'
+      ),
+      showlegend = showLegend[i]
+  )
+}
+
+p <- layout(
+  p,
+  title = "Proportion of problems on which gestures were produced<br><i>...",
+  yaxis = list(
+    zeroline = F
+  ),
+  violingap = 0,
+  violingroupgap = 0.1,
+  violinmode = 'overlay', # because violins are split they need to be overlaid
+  legend = list(
+    tracegroupgap = 1
+  )
+)
+
+p
+
+# htmlwidgets::saveWidget(as_widget(p), "violin_example.html")
+```
+
+
+```{r violin 1, warning = FALSE, echo = FALSE}
+
+gesture_proportion_violin <- prop_subj_gesture_type_axis %>%
+  
+  plot_ly(type = 'violin') %>%
+  add_trace(
+    x = ~ item_axis[prop_subj_gesture_type_axis$trial_type == 'spatial'],
+    y = ~ prop_gesture[prop_subj_gesture_type_axis$trial_type == 'spatial'],
+    
+    legendgroup = 'spatial',
+    scalegroup = 'spatial',
+    name = 'spatial',
+    side = 'negative', # left side
+    opacity = 0.8,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = '#66c2a5' # selected from qualitative colorblind safe scheme from Color Brewer
+    )
+  ) %>%
+  
+  add_trace(
+    x = ~ item_axis[prop_subj_gesture_type_axis$trial_type == 'non-spatial'],
+    y = ~ prop_gesture[prop_subj_gesture_type_axis$trial_type == 'non-spatial'],
+    
+    legendgroup = 'non-spatial',
+    scalegroup = 'non-spatial',
+    name = 'non-spatial',
+    side = 'positive', # right side
+    opacity = 0.7,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = '#8da0cb' # selected from qualitative colorblind safe scheme from Color Brewer
+    )
+  ) %>% 
+  layout(
+    title = "Gesture Production by Trial Type<br><i>(proportion observations are grouped by subject)",
+    xaxis = list(
+      title = ""  
+    ),
+    yaxis = list(
+      title = "proportion of trials with gesture",
+      zeroline = F
+    ),
+    violingap = 0,
+    violingroupgap = 0.1,
+    violinmode = 'overlay', # because violins are split they need to be overlaid
+    tracegroupgap = 1
+  )
+
+gesture_proportion_violin
+```
+
+
+
+```{r box plot 1}
+p <- plot_ly(y = ~ prop_subj_gesture_type_axis$prop_gesture, 
+             type = "box", boxpoints = "all", jitter = 0.3,
+             pointpos = 0)
+
+p <- plot_ly(prop_subj_gesture_type_axis, x = ~ item_axis,
+             y = ~ prop_gesture, color = ~ trial_type, type = "box",
+             boxpoints = "all", jitter = 0.3, pointpos = 0) %>%
+  layout(boxmode = "group")
+
+p
+
+```
+
+
+
