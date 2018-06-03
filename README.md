@@ -1,0 +1,7 @@
+### Interactive Data Visualization with Plotly
+
+For this submission (Assignment 3), I explored interactive visualization with Plotly. I also explored some of the other possibilities mentioned in the assignment, including blogdown websites, although I did not have time to implement this here.
+
+**Please view the **data-viz_study-01_interactivity_2** file, not the one with a "1" suffix.**
+
+
