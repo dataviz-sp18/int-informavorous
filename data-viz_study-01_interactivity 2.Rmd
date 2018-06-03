@@ -14,14 +14,13 @@ library(ggplot2)
 library(plotly)
 
 library(ggthemes)
-library(magrittr)
+#library(magrittr)
 library(tidyverse)
-
-
-
 ```
 
-```{r setup_output, include=FALSE}
+```{r setup_output, include=FALSE, eval = FALSE}
+# unsuccessfully tried to use this as a means of adjusting vertical space between chunks and text
+
 hook_output_def = knitr::knit_hooks$get('output')
 knitr::knit_hooks$set(output = function(x, options) {
   if (!is.null(options$vspaceout)) {
@@ -32,7 +31,6 @@ knitr::knit_hooks$set(output = function(x, options) {
   }
 })
 ```
-
 
 ```{r load data, echo = FALSE, include = FALSE}
 
@@ -47,7 +45,7 @@ study_01 <- readr::read_csv("~/R/CGChains/data/CGChains_CODED-ELAN-DATA_2018-04-
 study_01 <- study_01 %>%
   
   # encode as data frame
-  as_data_frame() %>%
+  #as_data_frame() %>%
   
   # add dichotomous variables
   mutate(GESTURE_PRESENT = if_else(study_01$`gesture_presence` == "yes", 1, 0)) %>%
@@ -58,6 +56,7 @@ study_01 <- study_01 %>%
   mutate(deSoto_difficulty = cut(x = correct_deSoto_without_invalid, breaks = c(38.3, 41.5, 60.5, 61.8, 100),
                                  right = FALSE, labels = c("HARDEST", "HARD", "EASY", "EASIEST")))
 ```
+
 
 ```{r variable types lists, include = FALSE}
 # variable types list
@@ -314,7 +313,7 @@ ggplotly(dist_gest, tooltip = c("x", "y", "SPACE_IV"), session = "knitr")
 
 ```
 
-.
+`r "\n"`
 This provides a better sense of the distribution, including the relative proportions of spatial and non-spatial trials (we can already see that spatial trials appear to account for more of the gestures overall). Lastly, another potentially useful addition is a *horizonal line* indicating the mean of the distribution:
 
 
@@ -322,12 +321,19 @@ This provides a better sense of the distribution, including the relative proport
 
 'total mean =' <- round(mean(X$percent_gestured)*2, digits = 3)
 
-dist_gest_04 <- X %>%
+dist_gest_03 <- X %>%
   
   ggplot() +
     
-      geom_hline(aes(yintercept = mean(percent_gestured)*2, 'total mean' = 0.524), 
+   geom_hline(aes(yintercept = mean(percent_gestured)*2, 'total mean' = 0.524), 
               color = "#2e184b", size = 0.3) +
+  
+    # label mean line
+    geom_text(x = 3, y = (mean(X$percent_gestured)*2 + 0.03), 
+              aes(label = "total mean = "), color = "#2e184b") +
+    
+    geom_text(x = 4.75, y = (mean(X$percent_gestured)*2 + 0.03), 
+              aes(label = round(mean(percent_gestured)*2, digits = 3)), color = "#2e184b") +
   
     geom_col(aes(x = reorder(ID, percent_gestured), y = percent_gestured, #group = SUBJ, 
                  fill = as.factor(SPACE_IV), alpha = .85)) +
@@ -355,15 +361,16 @@ dist_gest_04 <- X %>%
     xlab('participant id (arranged by total gesture production)\n') +
     ylab('proportion of trials with gesture')
 
-ggplotly(dist_gest_04, tooltip = c("total mean", "spatial mean", "percent_gestured", "SPACE_IV"))
+ggplotly(dist_gest_03, tooltip = c("total mean", "spatial mean", "percent_gestured", "SPACE_IV"))
 
 ```
 
-```{r ggplotly hist 4, echo = FALSE, fig.width=5, fig.height=3.5}
+This provides a nice reference point, though the labeling does not render well and could use more refining. Or, since these are `plotly` graphics, the lines can be placed and labels can be based on hovering (group mean lines also added):
 
-'total mean =' <- round(mean(X$percent_gestured)*2, digits = 3)
+```{r ggplotly hist 4, echo = FALSE, fig.width=6.5, fig.height=3.5, warning = FALSE}
 
-dist_gest <- X %>%
+
+dist_gest_04 <- X %>%
   
   ggplot() +
     
@@ -373,59 +380,50 @@ dist_gest <- X %>%
       geom_hline(aes(yintercept = mean(percent_gestured)*2, 'total mean' = 0.524), 
               color = "#2e184b", size = 0.3) +
 
-## OLD VERSION  
-##    geom_hline(aes(yintercept = mean(percent_gestured)*2, 'total mean' = paste("total mean", mean(percent_gestured)*2)), 
-##                 color = "#2e184b", size = 0.3) +
+ # label mean line
+#    geom_text(x = 3, y = (mean(X$percent_gestured)*2 + 0.03), 
+#              aes(label = "total mean = "), color = "#2e184b") +
+#    
+#    geom_text(x = 4.75, y = (mean(X$percent_gestured)*2 + 0.03), 
+#              aes(label = round(mean(percent_gestured)*2, digits = 3)), color = "#2e184b") +
   
-  # label mean line
-##  geom_text(x = 3, y = (mean(X$percent_gestured)*2 + 0.03), 
-##            aes(label = "total mean = "), color = "#2e184b") +
-##  
-##  geom_text(x = 6, y = (mean(X$percent_gestured)*2 + 0.03), 
-##            aes(label = round(mean(percent_gestured)*2, digits = 3)), color = "#2e184b") +
+    geom_col(aes(x = reorder(ID, percent_gestured), y = percent_gestured, #group = SUBJ, 
+                 fill = as.factor(SPACE_IV), alpha = .85)) +
   
-  ### REFERENCE
-    
-   #     geom_text(aes(label = sprintf("%0.2f", round(prop_gesture, digits = 2)), 
-    #                y = prop_gesture + 0.1,
-     #               group = item_axis,
-      #              fontface = "bold"), 
-       #             position = position_dodge(0.55),
-        #            color = "#767676") +
   
 ### group means... cluncky code: there must be a simpler way!
   
   # spatial mean line
   geom_hline(aes(yintercept = 
       (sum(X[X$SPACE_IV == 1, "percent_gestured"]) / 
-      tally(X[X$SPACE_IV == 1, "percent_gestured"]))[1,1], 'spatial mean' = "X"),
+      tally(X[X$SPACE_IV == 1, "percent_gestured"]))[1,1], 'spatial mean' = 0.305),
       color = "#5bae94") +
   
   # spatial mean labels  
-  geom_text(x = 3, 
-            y = (sum(X[X$SPACE_IV == 1, "percent_gestured"]) / 
-              tally(X[X$SPACE_IV == 1, "percent_gestured"])[1,1] + 0.03)[1,1], 
-            aes(label = "spatial mean = "), color = "#5bae94") +
+#  geom_text(x = 3, 
+#            y = (sum(X[X$SPACE_IV == 1, "percent_gestured"]) / 
+#              tally(X[X$SPACE_IV == 1, "percent_gestured"])[1,1] + 0.03)[1,1], 
+#            aes(label = "spatial mean = "), color = "#5bae94") +
   
-  geom_text(x = 7, 
-            y = (sum(X[X$SPACE_IV == 1, "percent_gestured"]) / 
-              tally(X[X$SPACE_IV == 1, "percent_gestured"])[1,1] + 0.03)[1,1], 
-            
-            aes(label = round((sum(X[X$SPACE_IV == 1, "percent_gestured"]) / 
-      tally(X[X$SPACE_IV == 1, "percent_gestured"]))[1,1], digits = 3)), color = "#5bae94") +
+#  geom_text(x = 7, 
+#            y = (sum(X[X$SPACE_IV == 1, "percent_gestured"]) / 
+#              tally(X[X$SPACE_IV == 1, "percent_gestured"])[1,1] + 0.03)[1,1], 
+#            
+#            aes(label = round((sum(X[X$SPACE_IV == 1, "percent_gestured"]) / 
+#      tally(X[X$SPACE_IV == 1, "percent_gestured"]))[1,1], digits = 3)), color = "#5bae94") +
   
   # non-spatial mean labels  
-  geom_text(x = 3.5, 
-            y = (sum(X[X$SPACE_IV == 0, "percent_gestured"]) / 
-              tally(X[X$SPACE_IV == 0, "percent_gestured"])[1,1] + 0.03)[1,1], 
-            aes(label = "non-spatial mean = "), color = "#5bae94") +
+#  geom_text(x = 3.5, 
+#            y = (sum(X[X$SPACE_IV == 0, "percent_gestured"]) / 
+#              tally(X[X$SPACE_IV == 0, "percent_gestured"])[1,1] + 0.03)[1,1], 
+#            aes(label = "non-spatial mean = "), color = "#5bae94") +
   
-  geom_text(x = 7.5, 
-            y = (sum(X[X$SPACE_IV == 0, "percent_gestured"]) / 
-              tally(X[X$SPACE_IV == 0, "percent_gestured"])[1,1] + 0.03)[1,1], 
+#  geom_text(x = 7.5, 
+#            y = (sum(X[X$SPACE_IV == 0, "percent_gestured"]) / 
+#              tally(X[X$SPACE_IV == 0, "percent_gestured"])[1,1] + 0.03)[1,1], 
             
-            aes(label = round((sum(X[X$SPACE_IV == 0, "percent_gestured"]) / 
-      tally(X[X$SPACE_IV == 0, "percent_gestured"]))[1,1], digits = 3)), color = "#5bae94") +
+#            aes(label = round((sum(X[X$SPACE_IV == 0, "percent_gestured"]) / 
+#      tally(X[X$SPACE_IV == 0, "percent_gestured"]))[1,1], digits = 3)), color = "#5bae94") +
   
   
 #  geom_text(x = 6, y = 0.554, aes(label = round(mean(percent_gestured)*2, digits = 3)), 
@@ -434,7 +432,8 @@ dist_gest <- X %>%
     # non-spatial mean
   geom_hline(aes(yintercept = 
       (sum(X[X$SPACE_IV == 0, "percent_gestured"]) / 
-      tally(X[X$SPACE_IV == 0, "percent_gestured"]))[1,1]), color = "#7e90b6") +
+      tally(X[X$SPACE_IV == 0, "percent_gestured"]))[1,1]), 'non-spatial mean' = 0.219,
+      color = "#7e90b6") +
   
 #  geom_hline(aes(yintercept = mean((X[X$SPACE_IV == 0, "percent_gestured"])[,])), color = "#FFA319") +
 #  geom_hline(aes(yintercept = mean((X[X$SPACE_IV == 1, "percent_gestured"])[,])), color = "#FFA319") +
@@ -477,15 +476,175 @@ dist_gest <- X %>%
     xlab('participant id (arranged by total gesture production)\n') +
     ylab('proportion of trials with gesture')
 
-dist_gest
-
-ggplotly(dist_gest, tooltip = c("total mean", "spatial mean", "all"))
+ggplotly(dist_gest_04, tooltip = c("total mean", "spatial mean", "spatial mean", "non-spatial mean", 
+                                   "percent_gestured", "SPACE_IV"))
 
 ```
 
+Having the extra mean lines, though potentially informative, seems to be excessive as it crowds the graphic. This brings me to the task of visualizing means while attempting to maintain keep the distribution in view.
+
 #### the split violin
 
-kernel density estimation (KDE)
+A potential alternative to the bar chart, which is traditionally used to visualize group means, we can instead simultaneously show the mean and the distribution of the group from which the mean is calculated by using a violin plot. The standard violin plot is symmetrical, but to visualize two groups it may be more beneficial to split the violin, as follows:
+
+```{r violin 1, warning = FALSE, echo = FALSE}
+
+gesture_proportion_violin <- prop_subj_gesture_type_axis %>%
+  
+  plot_ly(type = 'violin') %>%
+  add_trace(
+    x = ~ item_axis[prop_subj_gesture_type_axis$trial_type == 'spatial'],
+    y = ~ prop_gesture[prop_subj_gesture_type_axis$trial_type == 'spatial'],
+    
+    legendgroup = 'spatial',
+    scalegroup = 'spatial',
+    name = 'spatial',
+    side = 'negative', # left side
+    opacity = 0.8,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = '#66c2a5' # selected from qualitative colorblind safe scheme from Color Brewer
+    )
+  ) %>%
+  
+  add_trace(
+    x = ~ item_axis[prop_subj_gesture_type_axis$trial_type == 'non-spatial'],
+    y = ~ prop_gesture[prop_subj_gesture_type_axis$trial_type == 'non-spatial'],
+    
+    legendgroup = 'non-spatial',
+    scalegroup = 'non-spatial',
+    name = 'non-spatial',
+    side = 'positive', # right side
+    opacity = 0.7,
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = '#8da0cb' # selected from qualitative colorblind safe scheme from Color Brewer
+    )
+  ) %>% 
+  layout(
+    title = "Gesture Production by Trial Type<br><i>(proportion observations are grouped by subject)",
+    xaxis = list(
+      title = ""  
+    ),
+    yaxis = list(
+      title = "proportion of trials with gesture",
+      zeroline = F
+    ),
+    violingap = 0,
+    violingroupgap = 0.1,
+    violinmode = 'overlay', # because violins are split they need to be overlaid
+    tracegroupgap = 1
+  )
+
+gesture_proportion_violin
+```
+
+Although it is a nice first attempt, this visualization has one particularly glaring problem: The distribution exceeds the range of values in the dataset! This is due to the smooting kernel density function and can be addressed by limiting the range of values, which effectively sets cutoff points for the plot. We also remove the inner box plots, which add clutter and instead place the crucial part of the information they add, the mean, as a dashed line within each distribution:
+
+```{r violin 2, warning = FALSE, echo = FALSE}
+
+gesture_proportion_violin <- prop_subj_gesture_type_axis %>%
+  
+  plot_ly(type = 'violin') %>%
+  add_trace(
+    x = ~ item_axis[prop_subj_gesture_type_axis$trial_type == 'spatial'],
+    y = ~ prop_gesture[prop_subj_gesture_type_axis$trial_type == 'spatial'],
+    
+    legendgroup = 'spatial',
+    scalegroup = 'spatial',
+    name = 'spatial',
+    side = 'negative', # left side
+    opacity = 0.8,
+    box = list(
+      visible = F
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = '#66c2a5' # selected from qualitative colorblind safe scheme from Color Brewer
+    )
+  ) %>%
+  
+  add_trace(
+    x = ~ item_axis[prop_subj_gesture_type_axis$trial_type == 'non-spatial'],
+    y = ~ prop_gesture[prop_subj_gesture_type_axis$trial_type == 'non-spatial'],
+    
+    legendgroup = 'non-spatial',
+    scalegroup = 'non-spatial',
+    name = 'non-spatial',
+    side = 'positive', # right side
+    opacity = 0.7,
+    box = list(
+      visible = F
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = '#8da0cb' # selected from qualitative colorblind safe scheme from Color Brewer
+    )
+  ) %>% 
+  layout(
+    title = "Gesture Production by Trial Type<br><i>(proportion observations are grouped by subject)",
+    xaxis = list(
+      title = ""
+    ),
+    yaxis = list(
+      title = "proportion of trials with gesture",
+      zeroline = F,
+      range = c(0, 1)
+    ),
+    violingap = 0,
+    violingroupgap = 0.1,
+    violinmode = 'overlay', # because violins are split they need to be overlaid
+    tracegroupgap = 1,
+    margin = list(
+  l = -1,
+  r = 0,
+  b = -1,
+  t = -5,
+  pad = 0
+)
+  )
+
+gesture_proportion_violin
+```
+
+#### the story
+
+These experiments explore some of the potential of alternative ways to display scientific data. While priliminary, they show that alternatives exist that can present data in more informative and engaging ways. Interactivity has some uses here, allowing the audience to explore the information by homing in on data, looking at specific data points and, in situations not shown here, using additional interactive features of `plotly` such as zoom. This is a double-edged sward, however, and care should be taken to visualize scientific results in alternative ways only when there is a good justification for doing so. Labelling and other interactive elements may be excessive or unnecessary, and in many cases traditional forms may be preferable precisely for the reasons that made them the standard in the first place.
+
+
+
+```{r box plot 1, warning = FALSE, echo = FALSE}
+
+prop_subj_gesture_type_axis$trial_type <- factor(
+  prop_subj_gesture_type_axis$trial_type, levels = c("spatial", "non-spatial"))
+
+p <- plot_ly(y = ~ prop_subj_gesture_type_axis$prop_gesture, 
+             type = "box", boxpoints = "all", jitter = 0.3,
+             pointpos = 0)
+
+p <- plot_ly(prop_subj_gesture_type_axis, x = ~ item_axis,
+             y = ~ prop_gesture, color = ~ trial_type, type = "box",
+             boxpoints = "all", jitter = 0.3, pointpos = 0) %>%
+  layout(boxmode = "group")
+
+p
+
+```
+
 ```{r excluded split violin, include = FALSE, eval = FALSE}
 
 pointposMale <- c(-0.9,-1.1,-0.6,-0.3)
@@ -597,85 +756,5 @@ p
 
 # htmlwidgets::saveWidget(as_widget(p), "violin_example.html")
 ```
-
-
-```{r violin 1, warning = FALSE, echo = FALSE}
-
-gesture_proportion_violin <- prop_subj_gesture_type_axis %>%
-  
-  plot_ly(type = 'violin') %>%
-  add_trace(
-    x = ~ item_axis[prop_subj_gesture_type_axis$trial_type == 'spatial'],
-    y = ~ prop_gesture[prop_subj_gesture_type_axis$trial_type == 'spatial'],
-    
-    legendgroup = 'spatial',
-    scalegroup = 'spatial',
-    name = 'spatial',
-    side = 'negative', # left side
-    opacity = 0.8,
-    box = list(
-      visible = T
-    ),
-    meanline = list(
-      visible = T
-    ),
-    line = list(
-      color = '#66c2a5' # selected from qualitative colorblind safe scheme from Color Brewer
-    )
-  ) %>%
-  
-  add_trace(
-    x = ~ item_axis[prop_subj_gesture_type_axis$trial_type == 'non-spatial'],
-    y = ~ prop_gesture[prop_subj_gesture_type_axis$trial_type == 'non-spatial'],
-    
-    legendgroup = 'non-spatial',
-    scalegroup = 'non-spatial',
-    name = 'non-spatial',
-    side = 'positive', # right side
-    opacity = 0.7,
-    box = list(
-      visible = T
-    ),
-    meanline = list(
-      visible = T
-    ),
-    line = list(
-      color = '#8da0cb' # selected from qualitative colorblind safe scheme from Color Brewer
-    )
-  ) %>% 
-  layout(
-    title = "Gesture Production by Trial Type<br><i>(proportion observations are grouped by subject)",
-    xaxis = list(
-      title = ""  
-    ),
-    yaxis = list(
-      title = "proportion of trials with gesture",
-      zeroline = F
-    ),
-    violingap = 0,
-    violingroupgap = 0.1,
-    violinmode = 'overlay', # because violins are split they need to be overlaid
-    tracegroupgap = 1
-  )
-
-gesture_proportion_violin
-```
-
-
-
-```{r box plot 1}
-p <- plot_ly(y = ~ prop_subj_gesture_type_axis$prop_gesture, 
-             type = "box", boxpoints = "all", jitter = 0.3,
-             pointpos = 0)
-
-p <- plot_ly(prop_subj_gesture_type_axis, x = ~ item_axis,
-             y = ~ prop_gesture, color = ~ trial_type, type = "box",
-             boxpoints = "all", jitter = 0.3, pointpos = 0) %>%
-  layout(boxmode = "group")
-
-p
-
-```
-
 
 
