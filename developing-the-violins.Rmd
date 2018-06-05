@@ -1,5 +1,5 @@
 ---
-title: "Interactive Data Visualization with Plotly"
+title: "interactive split violins"
 author: "Misha Ash"
 date: "05/25/2018"
 output: html_document
@@ -629,6 +629,88 @@ gesture_proportion_violin
 #### the story
 
 These experiments explore some of the potential of alternative ways to display scientific data. While priliminary, they show that alternatives exist that can present data in more informative and engaging ways. Interactivity has some uses here, allowing the audience to explore the information by homing in on data, looking at specific data points and, in situations not shown here, using additional interactive features of `plotly` such as zoom. This is a double-edged sward, however, and care should be taken to visualize scientific results in alternative ways only when there is a good justification for doing so. Labelling and other interactive elements may be excessive or unnecessary, and in many cases traditional forms may be preferable precisely for the reasons that made them the standard in the first place.
+
+
+```{r violin 04, warning = FALSE, echo = FALSE}
+
+gesture_violin_04 <- prop_subj_gesture_type_axis %>%
+  select(-item_axis) %>%
+  group_by(trial_type, SUBJ) %>%
+  summarize(prop_gesture = sum(prop_gesture)/2) %>%
+  
+  
+  plot_ly(type = 'violin') %>%
+  add_trace(
+    x = ~ trial_type,
+    y = ~ prop_gesture[prop_subj_gesture_type_axis$trial_type == 'spatial'],
+    
+    legendgroup = 'spatial',
+    scalegroup = 'spatial',
+#    name = 'spatial',
+    side = 'negative', # left side
+    opacity = 0.8,
+    box = list(
+      visible = F
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = '#66c2a5' # selected from qualitative colorblind safe scheme from Color Brewer
+    )
+  ) %>%
+  
+  add_trace(
+    x = ~ trial_type,
+    y = ~ prop_gesture[prop_subj_gesture_type_axis$trial_type == 'non-spatial'],
+    
+    legendgroup = 'non-spatial',
+    scalegroup = 'non-spatial',
+#    name = 'non-spatial',
+    side = 'positive', # right side
+    opacity = 0.75,
+    box = list(
+      visible = F
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = '#8da0cb' # selected from qualitative colorblind safe scheme from Color Brewer
+    )
+    
+    
+    
+    
+  ) %>% 
+  layout(
+    title = "Gesture Production by Trial Type<br><i>(proportion observations are grouped by subject)",
+    xaxis = list(
+      title = ""
+    ),
+    yaxis = list(
+      title = "proportion of trials with gesture",
+      zeroline = F,
+      range = c(0, 1)
+    ),
+    violingap = 0,
+    violingroupgap = 0.1,
+    violinmode = 'overlay', # because violins are split they need to be overlaid
+    tracegroupgap = 1,
+    margin = list(
+  l = -1,
+  r = 0,
+  b = -1,
+  t = -5,
+  pad = 0
+)
+  )
+
+gesture_violin_04
+```
+
+
+
 
 
 
